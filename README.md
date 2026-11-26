@@ -437,3 +437,64 @@ schwab_refresh/
 tests/           fake-browser flow tests, token/config unit tests
 docs/assets/     README banner
 ```
+
+## Prerequisites
+
+Everything below must be in place before the first run. `doctor --selftest`
+checks most of it automatically.
+
+### On the computer
+
+| Requirement | Why | Check |
+| --- | --- | --- |
+| **Windows 10/11 (x64)** | built and verified here; the scheduling guidance is Windows-specific | `winver` |
+| **Python 3.11 or newer** (verified on 3.12) | runtime | `python --version` |
+| **[uv](https://docs.astral.sh/uv/)** | creates the venv and pins dependencies | `uv --version` |
+| **Google Chrome (stable channel)** | SeleniumBase drives it; the matching `chromedriver` and `uc_driver` are downloaded automatically on first launch | `(Get-Item "$env:ProgramFiles\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion` |
+| **A free loopback port** matching the callback (default `8182`) | the OAuth redirect lands there | `schwab-refresh status` → `callback_port_free` |
+| **Outbound HTTPS** | `api.schwabapi.com` (OAuth, market data), `client.schwab.com` / `sws-gateway.schwab.com` (login), `storage.googleapis.com` (first-run driver download) | open any of them in a browser |
+
+No administrator rights are required: no certificate-store changes, no
+services, no system-wide installs.
+
+If you prefer not to use uv: `python -m venv .venv` then
+`.venv\Scripts\pip install -e .` gives the same result.
+
+### On the Schwab side
+
+| Requirement | Why |
+| --- | --- |
+| A **Schwab developer app** (client id + secret) | the OAuth client credentials |
+| The app's callback registered **exactly** as `SCHWAB_CALLBACK_URL` — scheme, host, port and path | Schwab rejects any mismatch at the authorize step |
+| The app approved with **Accounts and Trading**, not market-data only | the trader endpoints and the streamer scope need it (`status --verify` proves both) |
+| **Schwab Mobile** on your phone, notifications enabled | the one-time MFA push when the device is not trusted yet |
+
+### Installed for you by `uv sync`
+
+| Package | Version floor | Role |
+| --- | --- | --- |
+| `seleniumbase` | ≥ 4.27 (4.59 verified) | UC-mode Chrome driver — the part that gets past Akamai |
+| `selenium` | pulled in by seleniumbase | WebDriver API |
+| `cryptography` | ≥ 42 (50.0 verified) | self-signed loopback cert + AES-GCM fallback for the password |
+| `httpx` | ≥ 0.27 (0.29 verified) | token endpoint calls, `--verify` probes |
+| `python-dotenv` | ≥ 1.0 (1.2 verified) | `.env` loading |
+| `pytest` | ≥ 8 (9.1 verified) | test suite (dev group) |
+
+### Bundled with Windows
+
+| Component | Used for |
+| --- | --- |
+| `cmd.exe` | `login.cmd`, `refresh.cmd` |
+| Task Scheduler (`schtasks.exe`) | the daily refresh job |
+
+### One-shot verification
+
+```powershell
+uv sync
+uv run schwab-refresh doctor --selftest
+```
+
+`doctor` reports Chrome, SeleniumBase, the four core `SCHWAB_*` variables, the
+login pair, the callback port, the state directory and the token file.
+`--selftest` additionally launches headless Chrome against the loopback callback
+and proves the code round-trips.
