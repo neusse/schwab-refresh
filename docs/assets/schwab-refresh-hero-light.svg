@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="schwab-refresh — unattended Charles Schwab OAuth refresh">
+  <title>schwab-refresh</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FBFDFF"/>
+      <stop offset="0.5" stop-color="#F1F7FC"/>
+      <stop offset="1" stop-color="#E6EFF7"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F172A" stop-opacity="0.14"/>
+      <stop offset="0.5" stop-color="#0F172A" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.10"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.12" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#06B6D4" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#06B6D4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.9" cy="0.95" r="0.65">
+      <stop offset="0" stop-color="#2563EB" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0891B2"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="shimmer" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#0F172A" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.20"/>
+    </filter>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="400" rx="28" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="28" fill="url(#grid)"/>
+  <rect width="1280" height="400" rx="28" fill="url(#glowA)">
+    <animate attributeName="opacity" values="0.75;1;0.75" dur="9s" repeatCount="indefinite"/>
+  </rect>
+  <rect width="1280" height="400" rx="28" fill="url(#glowB)">
+    <animate attributeName="opacity" values="1;0.7;1" dur="11s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="0.75" y="0.75" width="1278.5" height="398.5" rx="27.5" fill="none" stroke="url(#edge)" stroke-width="1.5"/>
+
+  <!-- brand mark -->
+  <g transform="translate(120 168)">
+    <circle r="50" fill="#FFFFFF" stroke="#D8E5F1" stroke-width="1.5"/>
+    <circle r="50" fill="url(#glowA)" opacity="0.6"/>
+    <g>
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="14s" repeatCount="indefinite"/>
+      <circle r="40" fill="none" stroke="#0891B2" stroke-opacity="0.35" stroke-width="2" stroke-linecap="round"
+              stroke-dasharray="3 26"/>
+    </g>
+    <path d="M0 -32 A32 32 0 1 1 -29 14" fill="none" stroke="url(#ring)" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M-37 5 L-27 18 L-14 8 Z" fill="#0891B2" filter="url(#softGlow)"/>
+    <text x="0" y="7" text-anchor="middle" font-family="ui-monospace, Consolas, monospace" font-size="17" font-weight="700" fill="#0B1524">7d</text>
+  </g>
+
+  <!-- wordmark -->
+  <text x="196" y="152" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="54" font-weight="700" letter-spacing="-1.4" fill="#0B1524">schwab-refresh</text>
+  <text x="199" y="190" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="19" fill="#47586C">Charles Schwab OAuth, refreshed without a human.</text>
+  <text x="199" y="220" font-family="ui-monospace, Consolas, monospace" font-size="12.5" fill="#6B7C90" letter-spacing="0.4">UC CHROME · LOOPBACK CODE · ATOMIC TOKEN WRITE</text>
+
+  <g font-family="ui-monospace, Consolas, monospace" font-size="12">
+    <text x="199" y="274" fill="#0E7490">✓</text>
+    <text x="216" y="274" fill="#5B6B7D">trust cookie</text>
+    <text x="322" y="274" fill="#0E7490">✓</text>
+    <text x="339" y="274" fill="#5B6B7D">MFA once</text>
+    <text x="424" y="274" fill="#0E7490">✓</text>
+    <text x="441" y="274" fill="#5B6B7D">7-day token</text>
+  </g>
+
+  <!-- terminal proof (deliberately dark: it reads as a real screenshot) -->
+  <g filter="url(#cardShadow)">
+    <rect x="700" y="74" width="520" height="212" rx="16" fill="#0B1726" stroke="#1D3350"/>
+    <path d="M700 106 h520" stroke="#1B2E48"/>
+    <circle cx="722" cy="90" r="4.5" fill="#F87171" opacity="0.8"/>
+    <circle cx="740" cy="90" r="4.5" fill="#FBBF24" opacity="0.8"/>
+    <circle cx="758" cy="90" r="4.5" fill="#34D399" opacity="0.8"/>
+    <text x="1204" y="94" text-anchor="end" font-family="ui-monospace, Consolas, monospace" font-size="11" fill="#4C6685">powershell</text>
+  </g>
+  <g font-family="ui-monospace, Consolas, monospace" font-size="13.5">
+    <text x="724" y="140" fill="#7A96B4">PS&gt;</text>
+    <text x="758" y="140" fill="#D3E2F1">schwab-refresh refresh</text>
+    <text x="724" y="170" fill="#9AB0C5">› login page: submitting credentials</text>
+    <text x="724" y="198" fill="#9AB0C5">› callback received (code)</text>
+    <text x="724" y="226" fill="#5EEAD4">✓ token written · refresh 7.0d left</text>
+    <rect x="724" y="240" width="8" height="14" rx="1.5" fill="#5EEAD4">
+      <animate attributeName="opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <rect x="700" y="74" width="520" height="212" rx="16" fill="url(#shimmer)" opacity="0.35">
+    <animate attributeName="opacity" values="0;0.45;0" dur="7s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- token pill -->
+  <g filter="url(#cardShadow)">
+    <rect x="966" y="306" width="254" height="48" rx="24" fill="#ECFEFF" stroke="#8FD8E8"/>
+  </g>
+  <circle cx="992" cy="330" r="4" fill="#0891B2">
+    <animate attributeName="opacity" values="1;0.35;1" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="1008" y="335" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#0E7490">new 7-day token</text>
+</svg>

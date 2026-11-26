@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/assets/schwab-refresh-banner.svg" alt="schwab-refresh — unattended Charles Schwab OAuth token refresh" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/schwab-refresh-hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/schwab-refresh-hero-light.svg">
+    <img src="docs/assets/schwab-refresh-hero-light.svg" alt="schwab-refresh — unattended Charles Schwab OAuth token refresh" width="100%">
+  </picture>
 </p>
 
 <h1 align="center">schwab-refresh</h1>
@@ -435,7 +439,7 @@ schwab_refresh/
   tokenstore.py  schwab-py token file read/write/atomic
   logsetup.py    console + file logging
 tests/           fake-browser flow tests, token/config unit tests
-docs/assets/     README banner
+docs/assets/     README hero, dark + light SVG variants
 ```
 
 ## Prerequisites
