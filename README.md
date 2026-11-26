@@ -133,7 +133,7 @@ a fake `code=` and asserts it round-trips. If that passes, the TLS/port/browser
 half of the pipeline is good; the only remaining variables are Schwab's own
 pages.
 
-## MFA: have your phone ready
+## ONE TIME MFA: have your phone ready
 
 **The tool cannot approve the second factor for you.** For an unrecognised
 device, Schwab sends a push notification to the **Schwab Mobile app**; you tap
