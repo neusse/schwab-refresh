@@ -288,11 +288,50 @@ Common flags: `--env-file`, `--token-path`, `--state-dir`, `--visible`,
 Exit codes: `0` ok · `2` config · `3` interactive login required · `4`
 browser/automation failure · `5` token endpoint failure.
 
+## Where settings come from
+
+Every setting is an **environment variable**. Values in a `.env` file are read
+as a fallback, so a variable already present in the environment always wins
+over the same name in `.env`. CLI flags win over both.
+
+### Token path resolution
+
+The token is written to the first of these that is set. Steps 2–4 are
+**environment variables**; step 1 is a CLI flag:
+
+1. `--token-path` (CLI flag)
+2. `SCHWAB_TOKEN_PATH` (environment variable)
+3. `SCHWAB_TOKEN_FILE` (environment variable)
+4. `SCHWAB_TOKEN_JSON` (environment variable)
+
+If none is set, `login` and `refresh` stop with a configuration error and
+`status` reports the missing path. When several are set, the higher one wins
+and the others are ignored — they are never merged.
+
+### All settings
+
+Each row is “environment variables, first match wins”:
+
+| Setting | Environment variables | CLI override |
+| --- | --- | --- |
+| client id | `SCHWAB_API_KEY`, `SCHWAB_APP_KEY`, `SCHWAB_CLIENT_ID` | — |
+| client secret | `SCHWAB_APP_SECRET`, `SCHWAB_CLIENT_SECRET` | — |
+| redirect URI | `SCHWAB_CALLBACK_URL`, `SCHWAB_REDIRECT_URI`, `SCHWAB_REDIRECT_URL` | — |
+| login id | `SCHWAB_USERNAME`, `SCHWAB_LOGIN_ID`, `SCHWAB_USER` | — |
+| password | `SCHWAB_PASSWORD`, `SCHWAB_LOGIN_PASSWORD` | — |
+| **token file** | `SCHWAB_TOKEN_PATH`, `SCHWAB_TOKEN_FILE`, `SCHWAB_TOKEN_JSON` | `--token-path` |
+| state directory | `SCHWAB_REFRESH_STATE_DIR` | `--state-dir` |
+| Chrome profile | `SCHWAB_REFRESH_PROFILE_DIR` | (`--fresh-profile` uses a throwaway one) |
+| headless | `SCHWAB_REFRESH_HEADLESS` | `--visible` / `--headless` |
+| MFA wait | `SCHWAB_REFRESH_MFA_TIMEOUT` | `--mfa-timeout` |
+| login budget | `SCHWAB_REFRESH_LOGIN_TIMEOUT` | `--timeout` |
+| accept loopback cert | `SCHWAB_REFRESH_IGNORE_CERT_ERRORS` | — |
+
 ## What gets written where
 
 | Path | Contents |
 | --- | --- |
-| `SCHWAB_TOKEN_PATH` | schwab-py token JSON (`creation_timestamp` + `token{…}`), atomic replace, `.bak` kept |
+| resolved token file (see above) | schwab-py token JSON (`creation_timestamp` + `token{…}`), atomic replace, `.bak` kept |
 | `<state>/chrome-profile/` | persistent Chrome profile — **do not delete** unless you want to re-do MFA |
 | `<state>/tls/` | self-signed loopback cert/key |
 | `<state>/logs/` | one log per run, last 30 kept |
