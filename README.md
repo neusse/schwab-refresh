@@ -10,7 +10,7 @@
   <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white">
   <img alt="platform Windows" src="https://img.shields.io/badge/platform-Windows-0F172A?style=flat-square&logo=windows11&logoColor=white">
   <img alt="engine SeleniumBase UC" src="https://img.shields.io/badge/engine-SeleniumBase%20UC-22C55E?style=flat-square">
-  <img alt="tests 20 passing" src="https://img.shields.io/badge/tests-20%20passing-16A34A?style=flat-square">
+  <img alt="tests 33 passing" src="https://img.shields.io/badge/tests-33%20passing-16A34A?style=flat-square">
   <img alt="token life 7 days" src="https://img.shields.io/badge/token%20life-7%20days-0EA5E9?style=flat-square">
 </p>
 
@@ -327,6 +327,35 @@ Each row is “environment variables, first match wins”:
 | login budget | `SCHWAB_REFRESH_LOGIN_TIMEOUT` | `--timeout` |
 | accept loopback cert | `SCHWAB_REFRESH_IGNORE_CERT_ERRORS` | — |
 
+### Password at rest
+
+The first command that loads a **plaintext** `SCHWAB_PASSWORD` from `.env`
+rewrites that line in place as an encrypted envelope:
+
+```
+SCHWAB_PASSWORD=$$dpapi:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA…$$
+```
+
+* `dpapi` — default on Windows. Windows DPAPI binds the blob to your Windows
+  user account, so another account (or the same file on another PC) cannot
+  open it. Nothing to manage, no key file.
+* `aes` — fallback off Windows. AES-GCM with a random key at
+  `<state>/secret.key` (mode 0600). It keeps the password out of the open, but
+  the key lives in your profile, so treat it as protection at rest rather than
+  account binding.
+
+The value is decrypted in memory at login time and never written back as
+plaintext. No extra command is needed — the next `login`, `refresh`, `status`
+or `doctor` run does it and prints a one-line note.
+
+Two consequences worth knowing:
+
+* Copying `.env` to another Windows account or PC: a `dpapi` envelope will not
+  open there, and the tool says so before touching the login form. Put the
+  plaintext back (it re-encrypts locally) or use `--prompt-credentials`.
+* A password supplied through the process environment is left alone — it is
+  not in the file, so there is nothing to rewrite.
+
 ## What gets written where
 
 | Path | Contents |
@@ -334,6 +363,7 @@ Each row is “environment variables, first match wins”:
 | resolved token file (see above) | schwab-py token JSON (`creation_timestamp` + `token{…}`), atomic replace, `.bak` kept |
 | `<state>/chrome-profile/` | persistent Chrome profile — **do not delete** unless you want to re-do MFA |
 | `<state>/tls/` | self-signed loopback cert/key |
+| `<state>/secret.key` | only when the password used the AES fallback (non-Windows) |
 | `<state>/logs/` | one log per run, last 30 kept |
 | `<state>/diagnostics/` | screenshots + HTML dumps on unexpected pages (only with `--verbose`) |
 | `<state>/refresh.lock` | prevents two refreshes at once (stale > 60 min is taken over) |
@@ -350,7 +380,7 @@ On Windows the state directory is `%LOCALAPPDATA%\schwab-refresh`.
 | Callback | local HTTPS server + root CA in the macOS keychain | local HTTPS server + self-signed leaf + `--ignore-certificate-errors` (no admin) |
 | Packaging | two projects, encrypted env files, notification listener | one package, env vars, no subprocess hop |
 | Output | `~/.config/schwab_cli/session.json` | schwab-py `token.json` (what downstream tools read) |
-| Credentials | webauto encrypted env | env / `.env` (see Security) |
+| Credentials | webauto encrypted env | env / `.env` with a `$$…$$` encrypted password |
 
 What was intentionally **not** copied: the remote notification listener, the
 config/session schema, and the root-CA install. None of them buy anything for a
@@ -360,10 +390,10 @@ single-purpose Windows refresher.
 
 - `.env` is gitignored; the token file is written `0600` where the filesystem
   supports it (OneDrive/Windows ACLs govern in practice).
-- Your Schwab **password is stored in plaintext** if you put it in `.env`. That
-  is the cost of unattended login. Alternatives: `login --prompt-credentials`
-  (nothing persisted), Windows Credential Manager, or `.env` on an encrypted
-  volume / ACL-locked to your user.
+- Your Schwab password is encrypted at rest in `.env` (`$$dpapi:…$$`, bound to
+  your Windows user account) and decrypted only in memory.
+  `--prompt-credentials` keeps it out of the file entirely; Windows Credential
+  Manager or an encrypted volume are further options.
 - The token file contains a bearer credential valid for 30 minutes plus a
   refresh token valid for 7 days. Treat it like a password.
 - `--verbose` dumps page HTML on failures. Schwab's login page source does not
@@ -387,7 +417,7 @@ single-purpose Windows refresher.
 
 ```powershell
 uv sync
-uv run pytest            # 20 tests, no network/browser needed for the suite
+uv run pytest            # 33 tests, no network/browser needed for the suite
 uv run schwab-refresh doctor --selftest
 ```
 
@@ -398,6 +428,7 @@ schwab_refresh/
   cli.py         command surface, orchestration, exit codes
   config.py      env/.env loading, aliasing, validation
   oauth.py       authorize URL, code exchange, refresh grant, probe
+  secretbox.py   $$…$$ password envelope (DPAPI / AES-GCM) + .env rewrite
   browser.py     SeleniumBase UC wrapper (goto/fill/click/check/wait)
   callback.py    loopback HTTPS server + self-signed cert
   flow.py        Schwab page state machine

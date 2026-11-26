@@ -78,9 +78,12 @@ def _settings(args, *, need_creds: bool) -> Settings:
         mfa_timeout_s=args.mfa_timeout,
         require_credentials=need_creds,
     )
+    if cfg.password_encrypted_now and not args.quiet:
+        print(
+            "note: SCHWAB_PASSWORD in .env was plaintext; encrypted it in place ($$…$$).",
+            file=sys.stderr,
+        )
     if args.fresh_profile:
-        from dataclasses import replace
-
         cfg = replace(cfg, profile_dir=cfg.state_dir / "chrome-profile-fresh")
         if cfg.profile_dir.exists():
             shutil.rmtree(cfg.profile_dir, ignore_errors=True)

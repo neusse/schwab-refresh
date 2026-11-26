@@ -82,6 +82,49 @@ def test_env_overrides(monkeypatch, tmp_path):
     assert cfg.mfa_timeout_s == 42
 
 
+def test_plaintext_env_password_is_encrypted_in_place(monkeypatch, tmp_path):
+    for key, value in BASE_ENV.items():
+        monkeypatch.setenv(key, value)
+    env = tmp_path / ".env"
+    env.write_text("SCHWAB_USERNAME=alice\nSCHWAB_PASSWORD=hunter2\n", encoding="utf-8")
+
+    cfg = load_settings(state_dir=tmp_path / "state", require_credentials=True)
+
+    assert cfg.password == "hunter2"
+    assert cfg.password_encrypted_now is True
+    text = env.read_text(encoding="utf-8")
+    assert "hunter2" not in text
+    assert "SCHWAB_PASSWORD=$$dpapi:" in text or "SCHWAB_PASSWORD=$$aes:" in text
+
+    again = load_settings(state_dir=tmp_path / "state", require_credentials=True)
+    assert again.password == "hunter2"
+    assert again.password_encrypted_now is False
+    assert env.read_text(encoding="utf-8") == text
+
+
+def test_env_password_is_not_rewritten(monkeypatch, tmp_path):
+    for key, value in BASE_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SCHWAB_PASSWORD", "from-process-env")
+    env = tmp_path / ".env"
+    env.write_text("SCHWAB_PASSWORD=from-file\n", encoding="utf-8")
+
+    cfg = load_settings(state_dir=tmp_path / "state")
+
+    assert cfg.password == "from-process-env"
+    assert cfg.password_encrypted_now is False
+    assert env.read_text(encoding="utf-8") == "SCHWAB_PASSWORD=from-file\n"
+
+
+def test_undecryptable_envelope_is_a_config_error(monkeypatch, tmp_path):
+    for key, value in BASE_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SCHWAB_PASSWORD", "$$aes:AAAAAAAAAAAAAAAAAAAAAAAAAAAA$$")
+    with pytest.raises(ConfigError) as exc:
+        load_settings(state_dir=tmp_path / "state")
+    assert "cannot be opened here" in str(exc.value)
+
+
 def test_mask_never_leaks_short_secrets():
     assert mask("abcd") == "****"
     assert mask("abcdefghij") == "abcd...ghij"

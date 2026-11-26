@@ -14,11 +14,13 @@ machine, with aliases so this tool drops into existing setups:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
+
+from schwab_refresh import secretbox
 
 _ALIASES = {
     "client_id": ("SCHWAB_API_KEY", "SCHWAB_APP_KEY", "SCHWAB_CLIENT_ID"),
@@ -82,6 +84,8 @@ class Settings:
     ignore_cert_errors: bool = True
     login_timeout_s: int = 600
     mfa_timeout_s: int = 180
+    # True on the run that replaced a plaintext .env password with a $$…$$ envelope.
+    password_encrypted_now: bool = False
 
     # -- derived ----------------------------------------------------------
     @property
@@ -126,14 +130,18 @@ def load_settings(
     require_credentials: bool = False,
 ) -> Settings:
     """Build settings from env (+ optional .env), then apply overrides."""
+    env_before = set(os.environ)
+    dotenv_file: Path | None = None
     if env_file is not None:
-        load_dotenv(Path(env_file), override=False)
+        dotenv_file = Path(env_file)
+        load_dotenv(dotenv_file, override=False)
     else:
         # Explicit cwd lookup: the console-script entry point lives in
         # site-packages, so python-dotenv's caller-relative search would walk
         # the wrong tree. Scheduled tasks run with cwd = project root.
         candidate = Path.cwd() / ".env"
         if candidate.exists():
+            dotenv_file = candidate
             load_dotenv(candidate, override=False)
 
     client_id = _env(*_ALIASES["client_id"])
@@ -182,9 +190,55 @@ def load_settings(
         )
     if cfg.redirect.scheme not in ("http", "https"):
         raise ConfigError(f"redirect uri must be http(s), got {cfg.redirect.scheme!r}")
+    cfg = _protect_password(cfg, dotenv_file=dotenv_file, env_before=env_before)
     if require_credentials:
         cfg.require_credentials()
     return cfg
+
+
+def _protect_password(
+    cfg: Settings, *, dotenv_file: Path | None, env_before: set[str]
+) -> Settings:
+    """Decrypt a $$…$$ password, or encrypt a plaintext one that came from .env.
+
+    Only values that actually came from the .env file are rewritten: a password
+    supplied through the process environment is left alone (we cannot persist
+    that change, and rewriting the file would be a lie about where it lives).
+    """
+    if not cfg.password:
+        return cfg
+
+    if secretbox.is_wrapped(cfg.password):
+        try:
+            return replace(cfg, password=secretbox.decrypt(cfg.password, state_dir=cfg.state_dir))
+        except secretbox.SecretError as exc:
+            raise ConfigError(
+                "SCHWAB_PASSWORD is encrypted ($$…$$) but cannot be opened here: "
+                f"{exc}. Put the plaintext back and it will be re-encrypted, or "
+                "run `login --prompt-credentials`."
+            ) from exc
+
+    if dotenv_file is None:
+        return cfg
+    var = next((name for name in _ALIASES["password"] if os.environ.get(name)), None)
+    if var is None or var in env_before:
+        return cfg
+
+    try:
+        envelope = secretbox.encrypt_in_env_file(
+            dotenv_file, _ALIASES["password"], state_dir=cfg.state_dir
+        )
+    except (secretbox.SecretError, OSError) as exc:
+        raise ConfigError(f"could not encrypt SCHWAB_PASSWORD in {dotenv_file}: {exc}") from exc
+    if envelope is None:
+        return cfg
+
+    os.environ[var] = envelope
+    return replace(
+        cfg,
+        password=secretbox.decrypt(envelope, state_dir=cfg.state_dir),
+        password_encrypted_now=True,
+    )
 
 
 def mask(value: str) -> str:
