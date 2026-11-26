@@ -165,7 +165,7 @@ If you never approve, the run exits non-zero with
 `timed out waiting for the mobile app approval` — exit code `3` from `refresh`,
 `4` from `login`. Nothing is corrupted; the previous token file is untouched.
 
-### Why you are asked only once per machine
+### Why you are asked only once
 
 Step 4 clicks **“remember this device”**, which stores a trust cookie in
 `<state>/chrome-profile`. Later runs go straight from password → consent with
@@ -222,8 +222,9 @@ the US open, and clear of any post-close jobs.
    - Program: `C:\path\to\Schwab-Refresh\refresh.cmd`
    - Start in: `C:\path\to\Schwab-Refresh` (must be the project folder so
      `.env` is found)
-5. **Conditions** — on a laptop, untick *Start the task only if the computer is
-   on AC power*; optionally tick *Wake the computer to run this task*.
+5. **Conditions** — if the computer runs on battery, untick *Start the task only
+   if the computer is on AC power*; optionally tick *Wake the computer to run
+   this task*.
 6. **Settings** — tick *If the task fails, restart every 10 minutes, up to 2
    times* if you want resilience against a transient network blip.
 
@@ -231,9 +232,10 @@ the US open, and clear of any post-close jobs.
 
 Headless Chrome is reliable inside your interactive session and unreliable in
 session 0 (the non-interactive session Task Scheduler uses when you are logged
-off). For a laptop, the logged-on trigger + *run missed task* + *wake* is the
-combination that actually fires. If you need logged-off operation, test it
-there first — Chrome and the UC driver are the parts that break.
+off). For a battery-powered computer, the logged-on trigger + *run missed task*
++ *wake* is the combination that actually fires. If you need logged-off
+operation, test it there first — Chrome and the UC driver are the parts that
+break.
 
 ### Verify it worked
 
@@ -268,14 +270,6 @@ kept), so a failed 06:30 run is diagnosable the same morning.
 schtasks /Change /TN "SchwabRefresh" /ST 07:00
 schtasks /Delete /TN "SchwabRefresh" /F
 ```
-
-### On a second machine (e.g. the laptop)
-
-Each machine gets its own Chrome profile, so each needs **one** phone-approved
-login, then schedules independently. If both machines write the same
-`SCHWAB_TOKEN_PATH` (say, a OneDrive folder), do not schedule them at the same
-minute — the run lock is per machine. Stagger by an hour, or give each machine
-its own token file.
 
 ## Commands
 
@@ -316,7 +310,7 @@ On Windows the state directory is `%LOCALAPPDATA%\schwab-refresh`.
 | Flow shape | fixed `PageAction` list per script | URL-keyed dispatcher with retries |
 | Callback | local HTTPS server + root CA in the macOS keychain | local HTTPS server + self-signed leaf + `--ignore-certificate-errors` (no admin) |
 | Packaging | two projects, encrypted env files, notification listener | one package, env vars, no subprocess hop |
-| Output | `~/.config/schwab_cli/session.json` | schwab-py `token.json` (what the rest of the machine reads) |
+| Output | `~/.config/schwab_cli/session.json` | schwab-py `token.json` (what downstream tools read) |
 | Credentials | webauto encrypted env | env / `.env` (see Security) |
 
 What was intentionally **not** copied: the remote notification listener, the
