@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="schwab-refresh — unattended Charles Schwab OAuth token refresh">
+  <title>schwab-refresh</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A111F"/>
+      <stop offset="0.55" stop-color="#0D1A2C"/>
+      <stop offset="1" stop-color="#070E18"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.12" cy="0.08" r="0.75">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.92" cy="0.95" r="0.7">
+      <stop offset="0" stop-color="#38BDF8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M34 0H0V34" fill="none" stroke="#7DD3FC" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="320" rx="26" fill="url(#bg)"/>
+  <rect width="1200" height="320" rx="26" fill="url(#grid)"/>
+  <rect width="1200" height="320" rx="26" fill="url(#glowA)"/>
+  <rect width="1200" height="320" rx="26" fill="url(#glowB)"/>
+
+  <!-- refresh mark -->
+  <g transform="translate(140 116)">
+    <circle r="46" fill="#0B1626" stroke="#1E3A5F" stroke-width="1.5"/>
+    <path d="M0 -30 A30 30 0 1 1 -27 13" fill="none" stroke="url(#ring)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M-34 5 L-25 17 L-13 7 Z" fill="#22D3EE"/>
+    <text x="0" y="7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700" fill="#E2F2FF">7d</text>
+  </g>
+
+  <!-- wordmark -->
+  <text x="206" y="112" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="52" font-weight="700" letter-spacing="-1.2" fill="#EAF4FF">schwab-refresh</text>
+  <text x="208" y="156" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="19" fill="#8FA6BF">Hands-free Charles Schwab OAuth — a fresh 7-day token, zero clicks.</text>
+  <rect x="208" y="176" width="188" height="3" rx="1.5" fill="url(#rule)"/>
+
+  <!-- spec block -->
+  <g font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" fill="#7C93AB" text-anchor="end">
+    <text x="1128" y="86">UC Chrome · headless</text>
+    <text x="1128" y="110">loopback code capture</text>
+    <text x="1128" y="134">atomic token.txt write</text>
+  </g>
+  <circle cx="1152" cy="81" r="3" fill="#22D3EE"/>
+  <circle cx="1152" cy="105" r="3" fill="#22D3EE" opacity="0.7"/>
+  <circle cx="1152" cy="129" r="3" fill="#22D3EE" opacity="0.45"/>
+
+  <!-- pipeline -->
+  <g font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+    <rect x="96" y="222" width="250" height="60" rx="14" fill="#0E1B2E" stroke="#1C3350"/>
+    <text x="119" y="249" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" fill="#38BDF8">01</text>
+    <text x="119" y="268" font-size="16" fill="#D7E5F4">browser login</text>
+
+    <text x="358" y="258" font-size="22" fill="#2F567E">&#8594;</text>
+
+    <rect x="392" y="222" width="250" height="60" rx="14" fill="#0E1B2E" stroke="#1C3350"/>
+    <text x="415" y="249" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" fill="#38BDF8">02</text>
+    <text x="415" y="268" font-size="16" fill="#D7E5F4">code capture</text>
+
+    <text x="654" y="258" font-size="22" fill="#2F567E">&#8594;</text>
+
+    <rect x="688" y="222" width="250" height="60" rx="14" fill="#0E1B2E" stroke="#1C3350"/>
+    <text x="711" y="249" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" fill="#38BDF8">03</text>
+    <text x="711" y="268" font-size="16" fill="#D7E5F4">token exchange</text>
+
+    <text x="950" y="258" font-size="22" fill="#2F567E">&#8594;</text>
+
+    <rect x="984" y="222" width="120" height="60" rx="14" fill="#0C2A33" stroke="#1D6B73"/>
+    <text x="1044" y="258" text-anchor="middle" font-size="15" font-weight="600" fill="#5EEAD4">7-day token</text>
+  </g>
+</svg>

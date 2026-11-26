@@ -1,0 +1,17 @@
+# virtualenv / build
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+
+# local secrets & runtime state
+.env
+.state/
+*.log
+
+# test / tool caches
+downloaded_files/
+.pytest_cache/
+.ruff_cache/
