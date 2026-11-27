@@ -340,21 +340,26 @@ and the others are ignored — they are never merged.
 
 Each row is “environment variables, first match wins”:
 
-| Setting | Environment variables | CLI override |
-| --- | --- | --- |
-| client id | `SCHWAB_API_KEY`, `SCHWAB_APP_KEY`, `SCHWAB_CLIENT_ID` | — |
-| client secret | `SCHWAB_APP_SECRET`, `SCHWAB_CLIENT_SECRET` | — |
-| redirect URI | `SCHWAB_CALLBACK_URL`, `SCHWAB_REDIRECT_URI`, `SCHWAB_REDIRECT_URL` | — |
-| login id | `SCHWAB_USERNAME`, `SCHWAB_LOGIN_ID`, `SCHWAB_USER` | — |
-| password | `SCHWAB_PASSWORD`, `SCHWAB_LOGIN_PASSWORD` | — |
-| **token file** | `SCHWAB_TOKEN_PATH`, `SCHWAB_TOKEN_FILE`, `SCHWAB_TOKEN_JSON` | `--token-path` |
-| state directory | `SCHWAB_REFRESH_STATE_DIR` | `--state-dir` |
-| Chrome profile | `SCHWAB_REFRESH_PROFILE_DIR` | (`--fresh-profile` uses a throwaway one) |
-| headless | `SCHWAB_REFRESH_HEADLESS` | `--visible` / `--headless` |
-| MFA wait | `SCHWAB_REFRESH_MFA_TIMEOUT` | `--mfa-timeout` |
-| login budget | `SCHWAB_REFRESH_LOGIN_TIMEOUT` | `--timeout` |
-| accept loopback cert | `SCHWAB_REFRESH_IGNORE_CERT_ERRORS` | — |
-| Chrome binary | `SCHWAB_REFRESH_CHROME_BIN` (auto-detected: standard install paths, `PATH`, then the App Paths registry key) | — |
+| Setting | Environment variables | CLI override | In `.env` |
+| --- | --- | --- | --- |
+| client id | `SCHWAB_API_KEY`, `SCHWAB_APP_KEY`, `SCHWAB_CLIENT_ID` | — | **`$$…$$` encrypted** |
+| client secret | `SCHWAB_APP_SECRET`, `SCHWAB_CLIENT_SECRET` | — | **`$$…$$` encrypted** |
+| redirect URI | `SCHWAB_CALLBACK_URL`, `SCHWAB_REDIRECT_URI`, `SCHWAB_REDIRECT_URL` | — | plaintext |
+| login id | `SCHWAB_USERNAME`, `SCHWAB_LOGIN_ID`, `SCHWAB_USER` | — | plaintext |
+| password | `SCHWAB_PASSWORD`, `SCHWAB_LOGIN_PASSWORD` | — | **`$$…$$` encrypted** |
+| **token file** | `SCHWAB_TOKEN_PATH`, `SCHWAB_TOKEN_FILE`, `SCHWAB_TOKEN_JSON` | `--token-path` | path only |
+| state directory | `SCHWAB_REFRESH_STATE_DIR` | `--state-dir` | — |
+| Chrome profile | `SCHWAB_REFRESH_PROFILE_DIR` | (`--fresh-profile` uses a throwaway one) | — |
+| headless | `SCHWAB_REFRESH_HEADLESS` | `--visible` / `--headless` | plaintext |
+| MFA wait | `SCHWAB_REFRESH_MFA_TIMEOUT` | `--mfa-timeout` | plaintext |
+| login budget | `SCHWAB_REFRESH_LOGIN_TIMEOUT` | `--timeout` | plaintext |
+| accept loopback cert | `SCHWAB_REFRESH_IGNORE_CERT_ERRORS` | — | plaintext |
+| Chrome binary | `SCHWAB_REFRESH_CHROME_BIN` (auto-detected: standard install paths, `PATH`, then the App Paths registry key) | — | — |
+
+The three rows marked **`$$…$$` encrypted** are the secrets — the Schwab app key,
+the app secret and the login password. Each is wrapped in place on first load,
+including the two that used to be stored in plaintext. See
+[Secrets at rest](#secrets-at-rest).
 
 ### Secrets at rest
 
@@ -376,7 +381,7 @@ is rewritten, so a leftover alias cannot keep the secret in the clear.
   user account, so another account (or the same file on another PC) cannot
   open it. Nothing to manage, no key file.
 * `aes` — fallback off Windows. AES-GCM with a random key at
-  `<state>/secret.key` (mode 0600). It keeps the password out of the open, but
+  `<state>/secret.key` (mode 0600). It keeps the secrets out of the open, but
   the key lives in your profile, so treat it as protection at rest rather than
   account binding.
 
@@ -402,7 +407,7 @@ Two consequences worth knowing:
 | resolved token file (see above) | schwab-py token JSON (`creation_timestamp` + `token{…}`), atomic replace, `.bak` kept |
 | `<state>/chrome-profile/` | persistent Chrome profile — **do not delete** unless you want to re-do MFA |
 | `<state>/tls/` | self-signed loopback cert/key |
-| `<state>/secret.key` | only when the password used the AES fallback (non-Windows) |
+| `<state>/secret.key` | only when the secrets used the AES fallback (non-Windows) |
 | `<state>/logs/` | one log per run, last 30 kept |
 | `<state>/diagnostics/` | screenshots + HTML dumps on unexpected pages (only with `--verbose`) |
 | `<state>/refresh.lock` | prevents two refreshes at once (stale > 60 min is taken over) |
@@ -419,7 +424,7 @@ On Windows the state directory is `%LOCALAPPDATA%\schwab-refresh`.
 | Callback | local HTTPS server + root CA in the macOS keychain | local HTTPS server + self-signed leaf + `--ignore-certificate-errors` (no admin) |
 | Packaging | two projects, encrypted env files, notification listener | one package, env vars, no subprocess hop |
 | Output | `~/.config/schwab_cli/session.json` | schwab-py `token.json` (what downstream tools read) |
-| Credentials | webauto encrypted env | env / `.env` with a `$$…$$` encrypted password |
+| Credentials | webauto encrypted env | env / `.env` with `$$…$$` encrypted app key, app secret and password |
 
 What was intentionally **not** copied: the remote notification listener, the
 config/session schema, and the root-CA install. None of them buy anything for a
