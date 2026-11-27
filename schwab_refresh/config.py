@@ -84,8 +84,13 @@ class Settings:
     ignore_cert_errors: bool = True
     login_timeout_s: int = 600
     mfa_timeout_s: int = 180
-    # True on the run that replaced a plaintext .env password with a $$…$$ envelope.
-    password_encrypted_now: bool = False
+    # Env vars this run rewrote in .env as $$…$$ envelopes (usually empty).
+    secrets_encrypted_now: tuple[str, ...] = ()
+
+    @property
+    def password_encrypted_now(self) -> bool:
+        """Backwards-compatible view of ``secrets_encrypted_now``."""
+        return any("PASSWORD" in name for name in self.secrets_encrypted_now)
 
     # -- derived ----------------------------------------------------------
     @property
@@ -190,55 +195,78 @@ def load_settings(
         )
     if cfg.redirect.scheme not in ("http", "https"):
         raise ConfigError(f"redirect uri must be http(s), got {cfg.redirect.scheme!r}")
-    cfg = _protect_password(cfg, dotenv_file=dotenv_file, env_before=env_before)
+    cfg = _protect_secrets(cfg, dotenv_file=dotenv_file, env_before=env_before)
     if require_credentials:
         cfg.require_credentials()
     return cfg
 
 
-def _protect_password(
+# (field, canonical env var) for every secret that may sit in .env plaintext.
+_SECRET_FIELDS: tuple[tuple[str, str], ...] = (
+    ("client_id", "SCHWAB_API_KEY"),
+    ("client_secret", "SCHWAB_APP_SECRET"),
+    ("password", "SCHWAB_PASSWORD"),
+)
+
+
+def _protect_secrets(
     cfg: Settings, *, dotenv_file: Path | None, env_before: set[str]
 ) -> Settings:
-    """Decrypt a $$…$$ password, or encrypt a plaintext one that came from .env.
+    """Decrypt $$…$$ secrets, or encrypt the plaintext copies in .env.
 
-    Only values that actually came from the .env file are rewritten: a password
-    supplied through the process environment is left alone (we cannot persist
-    that change, and rewriting the file would be a lie about where it lives).
+    Applies to the app key, the app secret and the login password — the three
+    values that would let someone impersonate this tool against Schwab.
+
+    Plaintext copies in the `.env` file are always encrypted, even when a
+    process environment variable shadows them: the file is the thing that gets
+    copied, synced and backed up, so it is the thing that needs protecting.
+    A shadowing environment variable still wins at runtime — we never overwrite
+    it with the file's envelope.
     """
-    if not cfg.password:
-        return cfg
+    resolved: dict[str, str] = {}
+    encrypted_now: list[str] = []
 
-    if secretbox.is_wrapped(cfg.password):
-        try:
-            return replace(cfg, password=secretbox.decrypt(cfg.password, state_dir=cfg.state_dir))
-        except secretbox.SecretError as exc:
-            raise ConfigError(
-                "SCHWAB_PASSWORD is encrypted ($$…$$) but cannot be opened here: "
-                f"{exc}. Put the plaintext back and it will be re-encrypted, or "
-                "run `login --prompt-credentials`."
-            ) from exc
+    for field, label in _SECRET_FIELDS:
+        value: str | None = getattr(cfg, field)
+        effective = next((name for name in _ALIASES[field] if os.environ.get(name)), None)
 
-    if dotenv_file is None:
-        return cfg
-    var = next((name for name in _ALIASES["password"] if os.environ.get(name)), None)
-    if var is None or var in env_before:
-        return cfg
+        # 1. Sweep the file for plaintext copies of this secret.
+        envelopes: dict[str, str] = {}
+        if dotenv_file is not None:
+            try:
+                envelopes = secretbox.encrypt_in_env_file(
+                    dotenv_file, _ALIASES[field], state_dir=cfg.state_dir
+                )
+            except (secretbox.SecretError, OSError) as exc:
+                raise ConfigError(f"could not encrypt {label} in {dotenv_file}: {exc}") from exc
+            encrypted_now.extend(envelopes)
 
-    try:
-        envelope = secretbox.encrypt_in_env_file(
-            dotenv_file, _ALIASES["password"], state_dir=cfg.state_dir
-        )
-    except (secretbox.SecretError, OSError) as exc:
-        raise ConfigError(f"could not encrypt SCHWAB_PASSWORD in {dotenv_file}: {exc}") from exc
-    if envelope is None:
-        return cfg
+        # 2. Resolve the value this run will actually use.
+        if not value:
+            continue
+        if secretbox.is_wrapped(value):
+            try:
+                resolved[field] = secretbox.decrypt(value, state_dir=cfg.state_dir)
+            except secretbox.SecretError as exc:
+                raise ConfigError(
+                    f"{label} is encrypted ($$…$$) but cannot be opened here: "
+                    f"{exc}. Put the plaintext back and it will be re-encrypted, or "
+                    "run `login --prompt-credentials`."
+                ) from exc
+            continue
 
-    os.environ[var] = envelope
-    return replace(
-        cfg,
-        password=secretbox.decrypt(envelope, state_dir=cfg.state_dir),
-        password_encrypted_now=True,
-    )
+        # Process environment wins: keep its value, only the file was rewritten.
+        if effective is None or effective in env_before:
+            continue
+        envelope = envelopes.get(effective.upper())
+        if envelope is None:
+            continue
+        os.environ[effective] = envelope
+        resolved[field] = secretbox.decrypt(envelope, state_dir=cfg.state_dir)
+
+    if not resolved and not encrypted_now:
+        return cfg
+    return replace(cfg, secrets_encrypted_now=tuple(encrypted_now), **resolved)
 
 
 def mask(value: str) -> str:

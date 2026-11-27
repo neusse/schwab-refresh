@@ -71,10 +71,11 @@ def test_env_file_rewrite_preserves_other_lines(tmp_path, state):
         encoding="utf-8",
     )
 
-    envelope = secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state)
+    envelopes = secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state)
 
     text = env.read_text(encoding="utf-8")
-    assert envelope is not None and envelope in text
+    envelope = envelopes["SCHWAB_PASSWORD"]
+    assert envelope in text
     assert "hunter2" not in text
     assert "# leading comment" in text
     assert "SCHWAB_USERNAME=alice" in text
@@ -85,8 +86,8 @@ def test_env_file_rewrite_preserves_other_lines(tmp_path, state):
 def test_env_file_quoted_password_is_encrypted(tmp_path, state):
     env = tmp_path / ".env"
     env.write_text('SCHWAB_PASSWORD="p@ss#word"\n', encoding="utf-8")
-    envelope = secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state)
-    assert envelope is not None
+    envelopes = secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state)
+    envelope = envelopes["SCHWAB_PASSWORD"]
     assert secretbox.decrypt(envelope, state_dir=state) == "p@ss#word"
     assert "p@ss#word" not in env.read_text(encoding="utf-8")
 
@@ -95,10 +96,46 @@ def test_env_file_already_wrapped_is_noop(tmp_path, state):
     env = tmp_path / ".env"
     env.write_text("SCHWAB_PASSWORD=$$dpapi:AAAA$$\n", encoding="utf-8")
     before = env.read_text(encoding="utf-8")
-    assert secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state) is None
+    assert secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state) == {}
     assert env.read_text(encoding="utf-8") == before
 
 
-def test_env_file_missing_returns_none(tmp_path, state):
+def test_env_file_missing_returns_empty(tmp_path, state):
     missing = tmp_path / "nope.env"
-    assert secretbox.encrypt_in_env_file(missing, ("SCHWAB_PASSWORD",), state_dir=state) is None
+    assert secretbox.encrypt_in_env_file(missing, ("SCHWAB_PASSWORD",), state_dir=state) == {}
+
+
+def test_env_file_wrapped_vars_reports_only_envelopes(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "SCHWAB_API_KEY=$$dpapi:AAAA$$\n"
+        "SCHWAB_APP_SECRET=plain\n"
+        "SCHWAB_CALLBACK_URL=https://127.0.0.1:8182/\n",
+        encoding="utf-8",
+    )
+    assert secretbox.env_file_wrapped_vars(env) == {"SCHWAB_API_KEY"}
+    assert secretbox.env_file_wrapped_vars(tmp_path / "missing.env") == set()
+
+
+def test_env_file_encrypts_every_matching_line(tmp_path, state):
+    env = tmp_path / ".env"
+    env.write_text(
+        "SCHWAB_API_KEY=plain-key\n"
+        "SCHWAB_APP_KEY=alias-key\n"
+        "SCHWAB_APP_SECRET=plain-secret\n"
+        "SCHWAB_CALLBACK_URL=https://127.0.0.1:8182/\n",
+        encoding="utf-8",
+    )
+
+    envelopes = secretbox.encrypt_in_env_file(
+        env, ("SCHWAB_API_KEY", "SCHWAB_APP_KEY"), state_dir=state
+    )
+
+    text = env.read_text(encoding="utf-8")
+    assert set(envelopes) == {"SCHWAB_API_KEY", "SCHWAB_APP_KEY"}
+    assert secretbox.decrypt(envelopes["SCHWAB_API_KEY"], state_dir=state) == "plain-key"
+    assert secretbox.decrypt(envelopes["SCHWAB_APP_KEY"], state_dir=state) == "alias-key"
+    assert "plain-key" not in text and "alias-key" not in text
+    # Not a candidate for this call, so left alone.
+    assert "SCHWAB_APP_SECRET=plain-secret" in text
+    assert "SCHWAB_CALLBACK_URL=https://127.0.0.1:8182/" in text

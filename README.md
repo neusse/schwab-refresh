@@ -14,7 +14,7 @@
   <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white">
   <img alt="platform Windows" src="https://img.shields.io/badge/platform-Windows-0F172A?style=flat-square&logo=windows11&logoColor=white">
   <img alt="engine SeleniumBase UC" src="https://img.shields.io/badge/engine-SeleniumBase%20UC-22C55E?style=flat-square">
-  <img alt="tests 33 passing" src="https://img.shields.io/badge/tests-33%20passing-16A34A?style=flat-square">
+  <img alt="tests 39 passing" src="https://img.shields.io/badge/tests-39%20passing-16A34A?style=flat-square">
   <img alt="token life 7 days" src="https://img.shields.io/badge/token%20life-7%20days-0EA5E9?style=flat-square">
 </p>
 
@@ -205,6 +205,14 @@ is your veto: if you did not start a run, decline it.
 
 Most days the task does nothing at all.
 
+### Pick the cadence deliberately
+
+A refresh *grant* never extends the refresh token's 7-day expiry, so a weekly
+cadence lands every run on the expiry boundary: the token dies between the
+login time and the run time, and each run then needs a full browser login.
+Either run **more often than weekly** (e.g. Tuesday + Friday, so there is always
+slack) or accept one unattended browser login per week.
+
 ### Option A — one command
 
 ```powershell
@@ -215,6 +223,21 @@ schtasks /Create /TN "SchwabRefresh" /SC DAILY /ST 06:30 `
 
 `06:30` is a good default: after the token's 7-day expiry could land, before
 the US open, and clear of any post-close jobs.
+
+### Option A′ — the repo script
+
+`scripts/register-task.ps1` does the same registration but adds what the bare
+`schtasks` line cannot set: *run as soon as possible after a missed start*,
+*don't start a new instance*, a 20-minute execution cap, two 10-minute restarts,
+and "run on battery".
+
+```powershell
+.\scripts\register-task.ps1                              # Friday 15:00 local
+.\scripts\register-task.ps1 -Day Tuesday,Friday           # with a mid-week safety run
+.\scripts\register-task.ps1 -Day Friday -Time 15:00 -TaskName SchwabRefresh
+```
+
+It is idempotent (`-Force`), so re-running it is how you change the schedule.
 
 ### Option B — Task Scheduler GUI
 
@@ -331,15 +354,23 @@ Each row is “environment variables, first match wins”:
 | MFA wait | `SCHWAB_REFRESH_MFA_TIMEOUT` | `--mfa-timeout` |
 | login budget | `SCHWAB_REFRESH_LOGIN_TIMEOUT` | `--timeout` |
 | accept loopback cert | `SCHWAB_REFRESH_IGNORE_CERT_ERRORS` | — |
+| Chrome binary | `SCHWAB_REFRESH_CHROME_BIN` (auto-detected: standard install paths, `PATH`, then the App Paths registry key) | — |
 
-### Password at rest
+### Secrets at rest
 
-The first command that loads a **plaintext** `SCHWAB_PASSWORD` from `.env`
-rewrites that line in place as an encrypted envelope:
+The first command that loads a **plaintext** app key, app secret or login
+password from `.env` rewrites those lines in place as encrypted envelopes:
 
 ```
+SCHWAB_API_KEY=$$dpapi:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA…$$
+SCHWAB_APP_SECRET=$$dpapi:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA…$$
 SCHWAB_PASSWORD=$$dpapi:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA…$$
 ```
+
+Covered variables, aliases included: `SCHWAB_API_KEY` / `SCHWAB_APP_KEY` /
+`SCHWAB_CLIENT_ID`, `SCHWAB_APP_SECRET` / `SCHWAB_CLIENT_SECRET`, and
+`SCHWAB_PASSWORD` / `SCHWAB_LOGIN_PASSWORD`. **Every** matching plaintext line
+is rewritten, so a leftover alias cannot keep the secret in the clear.
 
 * `dpapi` — default on Windows. Windows DPAPI binds the blob to your Windows
   user account, so another account (or the same file on another PC) cannot
@@ -349,17 +380,20 @@ SCHWAB_PASSWORD=$$dpapi:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA…$$
   the key lives in your profile, so treat it as protection at rest rather than
   account binding.
 
-The value is decrypted in memory at login time and never written back as
+The values are decrypted in memory when needed and never written back as
 plaintext. No extra command is needed — the next `login`, `refresh`, `status`
-or `doctor` run does it and prints a one-line note.
+or `doctor` run does it and prints a one-line note. `doctor` reports the
+effective key and secret (masked) and marks them `($$...$$ in .env)` so you can
+tell encrypted-at-rest from plaintext at a glance.
 
 Two consequences worth knowing:
 
 * Copying `.env` to another Windows account or PC: a `dpapi` envelope will not
   open there, and the tool says so before touching the login form. Put the
   plaintext back (it re-encrypts locally) or use `--prompt-credentials`.
-* A password supplied through the process environment is left alone — it is
-  not in the file, so there is nothing to rewrite.
+* A secret supplied through the process environment still wins at runtime, but
+  a plaintext copy of it in `.env` is encrypted anyway — the file is what gets
+  synced, so leaving a copy in the clear would defeat the purpose.
 
 ## What gets written where
 
@@ -395,8 +429,9 @@ single-purpose Windows refresher.
 
 - `.env` is gitignored; the token file is written `0600` where the filesystem
   supports it (OneDrive/Windows ACLs govern in practice).
-- Your Schwab password is encrypted at rest in `.env` (`$$dpapi:…$$`, bound to
-  your Windows user account) and decrypted only in memory.
+- Your Schwab app key, app secret and password are encrypted at rest in `.env`
+  (`$$dpapi:…$$`, bound to your Windows user account) and decrypted only in
+  memory.
   `--prompt-credentials` keeps it out of the file entirely; Windows Credential
   Manager or an encrypted volume are further options.
 - The token file contains a bearer credential valid for 30 minutes plus a
@@ -416,13 +451,14 @@ single-purpose Windows refresher.
 | `cannot bind 127.0.0.1:8182` | Something else owns the callback port (often an old schwab-py flow). Close it or register a new callback URL. |
 | `unexpected page during login` | Schwab changed the flow or added a verification step. Run `--verbose --visible` and inspect the diagnostics dump; selectors live at the top of `schwab_refresh/flow.py`. |
 | Browser never shows the callback | Check `SCHWAB_CALLBACK_URL` matches the portal **exactly**, including the trailing path. Run `doctor --selftest`. |
+| `failed to launch Chrome UC driver: sequence item 0: expected str instance, NoneType found` | Fixed upstream of SeleniumBase's own scan: Chrome is now located by `chrome_path()` (`schwab_refresh/browser.py`). If Chrome lives somewhere non-standard, set `SCHWAB_REFRESH_CHROME_BIN` to the full path. |
 | Refresh token rejected every run | The stored refresh token is older than 7 days. `refresh` should fall back to a full login automatically; check the log for the fallback line. |
 
 ## Development
 
 ```powershell
 uv sync
-uv run pytest            # 33 tests, no network/browser needed for the suite
+uv run pytest            # 39 tests, no network/browser needed for the suite
 uv run schwab-refresh doctor --selftest
 ```
 
@@ -433,7 +469,7 @@ schwab_refresh/
   cli.py         command surface, orchestration, exit codes
   config.py      env/.env loading, aliasing, validation
   oauth.py       authorize URL, code exchange, refresh grant, probe
-  secretbox.py   $$…$$ password envelope (DPAPI / AES-GCM) + .env rewrite
+  secretbox.py   $$…$$ secret envelopes (DPAPI / AES-GCM) + .env rewrite
   browser.py     SeleniumBase UC wrapper (goto/fill/click/check/wait)
   callback.py    loopback HTTPS server + self-signed cert
   flow.py        Schwab page state machine

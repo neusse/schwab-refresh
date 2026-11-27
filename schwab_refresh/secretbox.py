@@ -1,13 +1,15 @@
-"""Two-way protection for the Schwab password kept in ``.env``.
+"""Two-way protection for the secrets kept in ``.env``.
 
-Why: the password is the only genuinely dangerous thing on disk here. `.env`
-files get copied, synced (OneDrive!), pasted into chats, and backed up. So the
-first time a command loads a **plaintext** password from `.env`, the tool
-replaces it with a ``$$…$$`` envelope and never touches the plaintext again.
+The app key, the app secret and the login password are the dangerous things on
+disk here. `.env` files get copied, synced (OneDrive!), pasted into chats, and
+backed up. So the first time a command loads a **plaintext** secret from
+`.env`, the tool replaces it with a ``$$…$$`` envelope and never touches the
+plaintext again.
 
 Envelope format::
 
-    SCHWAB_PASSWORD=$$dpapi:<base64>$$
+    SCHWAB_API_KEY=$$dpapi:<base64>$$
+    SCHWAB_APP_SECRET=$$dpapi:<base64>$$
     SCHWAB_PASSWORD=$$aes:<base64>$$
 
 Backends, chosen per envelope:
@@ -225,33 +227,60 @@ def _aes_unprotect(body: bytes, *, state_dir: Path) -> bytes:
 # --------------------------------------------------------------------- #
 # .env rewriting
 # --------------------------------------------------------------------- #
+def env_file_wrapped_vars(env_path: str | Path) -> set[str]:
+    """Names of the variables in ``env_path`` whose value is already a $$…$$ envelope.
+
+    Reported uppercase. Used by ``doctor`` to say "encrypted at rest" based on
+    the file, which is not the same thing as the value this process is using:
+    a plaintext environment variable can shadow an encrypted .env line.
+    """
+    try:
+        text = Path(env_path).read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    wrapped: set[str] = set()
+    for line in text.splitlines():
+        match = _LINE_RE.match(line)
+        if match is None:
+            continue
+        if is_wrapped(match.group("value").strip()):
+            wrapped.add(match.group("key").upper())
+    return wrapped
+
+
 def encrypt_in_env_file(
     env_path: str | Path,
     candidates: tuple[str, ...] | list[str],
     *,
     state_dir: Path,
-) -> str | None:
-    """Encrypt the first plaintext password line in ``env_path``, in place.
+) -> dict[str, str]:
+    """Encrypt every plaintext line in ``env_path`` whose key is a candidate.
 
-    Returns the envelope (also left in the file) or ``None`` when nothing
-    matched. The plaintext is verified to decrypt before anything is written,
-    and no plaintext backup is kept — that would defeat the point.
+    Returns ``{ENV_VAR: envelope}`` for the lines rewritten in place, keyed by
+    the variable name as it appears in the file, and ``{}`` when nothing
+    matched (already wrapped, missing file, value absent). All matches are
+    processed, not just the first: one stale alias left behind as plaintext
+    would defeat the point of encrypting its sibling.
+
+    Each plaintext is verified to decrypt before anything is written, and no
+    plaintext backup is kept — that would defeat the point.
     """
     path = Path(env_path)
     try:
         original = path.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return {}
 
     wanted = {name.upper() for name in candidates}
     lines = original.splitlines(keepends=True)
-    envelope: str | None = None
+    envelopes: dict[str, str] = {}
 
     for index, line in enumerate(lines):
         match = _LINE_RE.match(line)
         if not match:
             continue
-        if match.group("key").upper() not in wanted:
+        var = match.group("key")
+        if var.upper() not in wanted:
             continue
         raw_value = match.group("value").strip()
         if raw_value[:1] in ("'", '"') and raw_value[-1:] == raw_value[:1]:
@@ -262,11 +291,11 @@ def encrypt_in_env_file(
         envelope = encrypt(raw_value, state_dir=state_dir)
         if decrypt(envelope, state_dir=state_dir) != raw_value:
             raise SecretError("encryption self-check failed; .env left unchanged")
-        lines[index] = f"{match.group('prefix')}{match.group('key')}={envelope}{match.group('eol') or ''}"
-        break
+        lines[index] = f"{match.group('prefix')}{var}={envelope}{match.group('eol') or ''}"
+        envelopes[var.upper()] = envelope
 
-    if envelope is None:
-        return None
+    if not envelopes:
+        return {}
 
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text("".join(lines), encoding="utf-8")
@@ -275,4 +304,4 @@ def encrypt_in_env_file(
     except OSError:
         pass
     os.replace(tmp, path)
-    return envelope
+    return envelopes

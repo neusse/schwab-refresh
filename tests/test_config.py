@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from schwab_refresh.config import ConfigError, default_state_dir, load_settings, mask
@@ -102,7 +104,7 @@ def test_plaintext_env_password_is_encrypted_in_place(monkeypatch, tmp_path):
     assert env.read_text(encoding="utf-8") == text
 
 
-def test_env_password_is_not_rewritten(monkeypatch, tmp_path):
+def test_shadowed_env_password_is_encrypted_but_process_env_wins(monkeypatch, tmp_path):
     for key, value in BASE_ENV.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setenv("SCHWAB_PASSWORD", "from-process-env")
@@ -112,8 +114,85 @@ def test_env_password_is_not_rewritten(monkeypatch, tmp_path):
     cfg = load_settings(state_dir=tmp_path / "state")
 
     assert cfg.password == "from-process-env"
-    assert cfg.password_encrypted_now is False
-    assert env.read_text(encoding="utf-8") == "SCHWAB_PASSWORD=from-file\n"
+    assert cfg.secrets_encrypted_now == ("SCHWAB_PASSWORD",)
+    text = env.read_text(encoding="utf-8")
+    assert "from-file" not in text
+    assert "SCHWAB_PASSWORD=$$" in text
+
+
+def test_plaintext_env_key_and_secret_are_encrypted_in_place(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "SCHWAB_API_KEY=plain-client-id\n"
+        "SCHWAB_APP_SECRET=plain-app-secret\n"
+        "SCHWAB_CALLBACK_URL=https://127.0.0.1:8182/\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_settings(state_dir=tmp_path / "state")
+
+    assert (cfg.client_id, cfg.client_secret) == ("plain-client-id", "plain-app-secret")
+    assert cfg.secrets_encrypted_now == ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")
+    text = env.read_text(encoding="utf-8")
+    assert "plain-client-id" not in text
+    assert "plain-app-secret" not in text
+    assert "SCHWAB_API_KEY=$$dpapi:" in text or "SCHWAB_API_KEY=$$aes:" in text
+    assert "SCHWAB_APP_SECRET=$$dpapi:" in text or "SCHWAB_APP_SECRET=$$aes:" in text
+
+    again = load_settings(state_dir=tmp_path / "state")
+    assert (again.client_id, again.client_secret) == ("plain-client-id", "plain-app-secret")
+    assert again.secrets_encrypted_now == ()
+    assert env.read_text(encoding="utf-8") == text
+
+
+def test_env_file_aliases_are_encrypted_too(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "SCHWAB_APP_KEY=alias-key\n"
+        "SCHWAB_CLIENT_SECRET=alias-secret\n"
+        "SCHWAB_REDIRECT_URI=https://127.0.0.1:8182/\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_settings(state_dir=tmp_path / "state")
+
+    assert (cfg.client_id, cfg.client_secret) == ("alias-key", "alias-secret")
+    assert cfg.secrets_encrypted_now == ("SCHWAB_APP_KEY", "SCHWAB_CLIENT_SECRET")
+    text = env.read_text(encoding="utf-8")
+    assert "alias-key" not in text
+    assert "alias-secret" not in text
+
+
+def test_shadowed_env_secrets_are_encrypted_but_process_env_wins(monkeypatch, tmp_path):
+    for key, value in BASE_ENV.items():
+        monkeypatch.setenv(key, value)
+    env = tmp_path / ".env"
+    env.write_text("SCHWAB_API_KEY=from-file\nSCHWAB_APP_SECRET=file-secret\n", encoding="utf-8")
+
+    cfg = load_settings(state_dir=tmp_path / "state")
+
+    assert (cfg.client_id, cfg.client_secret) == ("my-client-id", "my-secret")
+    assert cfg.secrets_encrypted_now == ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")
+    text = env.read_text(encoding="utf-8")
+    assert "from-file" not in text and "file-secret" not in text
+    # The environment still holds the values the process supplied.
+    assert os.environ["SCHWAB_API_KEY"] == "my-client-id"
+
+    again = load_settings(state_dir=tmp_path / "state")
+    assert again.secrets_encrypted_now == ()
+    assert env.read_text(encoding="utf-8") == text
+
+
+def test_undecryptable_client_id_is_a_config_error(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "SCHWAB_API_KEY=$$aes:AAAAAAAAAAAAAAAAAAAAAAAAAAAA$$\n"
+        "SCHWAB_CALLBACK_URL=https://127.0.0.1:8182/\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError) as exc:
+        load_settings(state_dir=tmp_path / "state")
+    assert "SCHWAB_API_KEY is encrypted" in str(exc.value)
 
 
 def test_undecryptable_envelope_is_a_config_error(monkeypatch, tmp_path):

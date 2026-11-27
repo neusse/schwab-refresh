@@ -27,8 +27,8 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from schwab_refresh import __version__, oauth, tokenstore
-from schwab_refresh.browser import Browser, BrowserError
+from schwab_refresh import __version__, oauth, secretbox, tokenstore
+from schwab_refresh.browser import Browser, BrowserError, chrome_path
 from schwab_refresh.callback import CallbackError, CallbackServer, port_is_free
 from schwab_refresh.config import ConfigError, Settings, load_settings, mask
 from schwab_refresh.flow import LoginError, LoginFlow
@@ -78,9 +78,10 @@ def _settings(args, *, need_creds: bool) -> Settings:
         mfa_timeout_s=args.mfa_timeout,
         require_credentials=need_creds,
     )
-    if cfg.password_encrypted_now and not args.quiet:
+    if cfg.secrets_encrypted_now and not args.quiet:
+        names = ", ".join(cfg.secrets_encrypted_now)
         print(
-            "note: SCHWAB_PASSWORD in .env was plaintext; encrypted it in place ($$…$$).",
+            f"note: {names} in .env was plaintext; encrypted in place ($$…$$).",
             file=sys.stderr,
         )
     if args.fresh_profile:
@@ -459,18 +460,6 @@ def cmd_status(args) -> int:
     return exit_code
 
 
-def _chrome_path() -> str | None:
-    candidates = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    ]
-    for path in candidates:
-        if Path(path).exists():
-            return path
-    return shutil.which("chrome") or shutil.which("google-chrome")
-
-
 def cmd_doctor(args) -> int:
     checks: list[tuple[str, bool, str]] = []
 
@@ -484,21 +473,39 @@ def cmd_doctor(args) -> int:
     except Exception as exc:  # noqa: BLE001
         checks.append(("seleniumbase", False, str(exc)))
 
-    chrome = _chrome_path()
+    chrome = chrome_path()
     checks.append(("chrome", bool(chrome), chrome or "not found"))
-
-    for var in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "SCHWAB_CALLBACK_URL", "SCHWAB_TOKEN_PATH"):
-        value = os.environ.get(var) or ""
-        if not value:
-            checks.append((var, False, "missing"))
-        elif "SECRET" in var or "KEY" in var:
-            checks.append((var, True, mask(value)))
-        else:
-            checks.append((var, True, value))
 
     cfg: Settings | None = None
     try:
         cfg = _settings(args, need_creds=False)
+    except ConfigError as exc:
+        checks.append(("config", False, str(exc)))
+
+    # Report the *effective* values: an encrypted .env yields $$…$$ in the
+    # environment, so masking that would hide the key instead of identifying it.
+    env_file = Path(args.env_file) if getattr(args, "env_file", None) else Path.cwd() / ".env"
+    wrapped = secretbox.env_file_wrapped_vars(env_file)
+
+    for var, value, secret in (
+        ("SCHWAB_API_KEY", cfg.client_id if cfg else os.environ.get("SCHWAB_API_KEY"), True),
+        ("SCHWAB_APP_SECRET", cfg.client_secret if cfg else os.environ.get("SCHWAB_APP_SECRET"), True),
+        ("SCHWAB_CALLBACK_URL", cfg.redirect_uri if cfg else os.environ.get("SCHWAB_CALLBACK_URL"), False),
+        (
+            "SCHWAB_TOKEN_PATH",
+            str(cfg.token_path) if cfg and cfg.token_path else os.environ.get("SCHWAB_TOKEN_PATH"),
+            False,
+        ),
+    ):
+        if not value:
+            checks.append((var, False, "missing"))
+            continue
+        detail = mask(value) if secret else value
+        if var in wrapped:
+            detail += "  ($$...$$ in .env)"
+        checks.append((var, True, detail))
+
+    if cfg is not None:
         checks.append(("credentials", bool(cfg.username and cfg.password), "username+password set" if cfg.username and cfg.password else "missing (needed for unattended login)"))
         checks.append(
             ("callback port", port_is_free(cfg.redirect.hostname or "127.0.0.1", cfg.callback_port), f"{cfg.redirect.hostname}:{cfg.callback_port}")
@@ -506,8 +513,6 @@ def cmd_doctor(args) -> int:
         checks.append(("state dir", True, str(cfg.state_dir)))
         if cfg.token_path:
             checks.append(("token file", cfg.token_path.exists(), str(cfg.token_path)))
-    except ConfigError as exc:
-        checks.append(("config", False, str(exc)))
 
     if args.selftest and cfg is not None:
         checks.append(("loopback callback selftest", *_selftest(cfg, args)))
