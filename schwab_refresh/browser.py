@@ -19,6 +19,7 @@ against Schwab (schwab_cli + webauto-cli):
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import time
 from pathlib import Path
@@ -31,6 +32,52 @@ _RECONNECT_SECONDS = 4
 
 class BrowserError(Exception):
     """Browser could not be launched or navigated."""
+
+
+def chrome_path() -> str | None:
+    """Locate the Chrome binary without relying on SeleniumBase's scan.
+
+    SeleniumBase's own discovery does ``os.sep.join((os.environ.get(var), ...))``
+    for PROGRAMFILES / PROGRAMFILES(X86) / LOCALAPPDATA / PROGRAMW6432, so a
+    stripped environment (Task Scheduler, some shells) raises TypeError instead
+    of falling through. Resolving here keeps both ``doctor`` and ``Browser``
+    independent of which env vars happen to be present.
+    """
+    override = os.environ.get("SCHWAB_REFRESH_CHROME_BIN")
+    if override and Path(override).exists():
+        return override
+
+    rel = Path("Google/Chrome/Application/chrome.exe")
+    candidates = [
+        Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+        Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
+    ]
+    for var in ("PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "LOCALAPPDATA"):
+        base = os.environ.get(var)
+        if base:
+            candidates.append(Path(base) / rel)
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    found = shutil.which("chrome") or shutil.which("google-chrome")
+    if found:
+        return found
+
+    # Last resort: the App Paths key, which also covers non-default installs.
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "")
+        if value and Path(value).exists():
+            return str(Path(value))
+    except (OSError, ImportError):
+        pass
+    return None
 
 
 def _free_port() -> int:
@@ -83,11 +130,17 @@ class Browser:
             f"launching Chrome UC (headless={self._headless}, "
             f"profile={profile}, debug_port={debug_port})"
         )
+        binary = chrome_path()
+        if binary is None:
+            raise BrowserError(
+                "Chrome not found; install Chrome or set SCHWAB_REFRESH_CHROME_BIN."
+            )
         try:
             self._driver = Driver(
                 uc=True,
                 headless=self._headless,
                 user_data_dir=str(profile),
+                binary_location=binary,
                 chromium_arg=",".join(args),
                 log_cdp_events=False,
             )
