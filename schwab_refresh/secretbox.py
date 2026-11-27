@@ -71,7 +71,9 @@ def _dotenv_value(line: str) -> str | None:
     * ``KEY="pa\\"ss"`` — dotenv decodes the escapes, raw text keeps them
 
     Returns ``None`` for a line dotenv cannot bind (no key, several bindings,
-    or a parse error), which means "leave this line alone".
+    a parse error, or a quoted value that continues on the next line), which
+    means "leave this line alone". A multi-line secret therefore never gets
+    encrypted — it stays readable rather than being half-rewritten.
     """
     try:
         bindings = list(parse_stream(io.StringIO(line)))
@@ -79,7 +81,10 @@ def _dotenv_value(line: str) -> str | None:
         return None
     if len(bindings) != 1:
         return None
-    return bindings[0][1]
+    binding = bindings[0]
+    if getattr(binding, "error", False):
+        return None
+    return binding[1]
 
 
 def encrypt(plaintext: str, *, state_dir: Path) -> str:
@@ -224,11 +229,19 @@ def _load_or_create_key(state_dir: Path) -> bytes:
         return raw
     path.parent.mkdir(parents=True, exist_ok=True)
     key = secrets.token_bytes(_KEY_BYTES)
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
+        # Binary mode is not cosmetic: os.open() without O_BINARY gives a *text*
+        # handle on Windows, which rewrites every 0x0A byte as CRLF. A random
+        # 32-byte key contains one about 12% of the time, and that profile then
+        # reads back 33+ bytes and reports "corrupt key file" forever.
+        with open(path, "xb") as fh:  # O_CREAT | O_EXCL | O_WRONLY, binary
+            fh.write(key)
+    except FileExistsError:  # lost the race; use the key the winner wrote
+        return _read_key(state_dir)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
     return key
 
 
