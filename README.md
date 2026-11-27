@@ -307,7 +307,7 @@ schtasks /Delete /TN "SchwabRefresh" /F
 | `refresh` | Refresh grant → full login fallback. `--force` skips the refresh; `--refresh-only` never opens a browser. |
 | `token` | Prints a valid access token to stdout (refreshes it if it expires within 2 min). |
 | `status` | Token ages/budgets, config echo, callback port availability. `--verify` probes market data + trader endpoints. |
-| `doctor` | Chrome/SeleniumBase/env checks. `--selftest` exercises TLS + callback + browser. |
+| `doctor` | Chrome/SeleniumBase/env checks. `--selftest` exercises TLS + callback + browser. Also performs the one-time `.env` encryption, so it is **not** a read-only command. |
 
 Common flags: `--env-file`, `--token-path`, `--state-dir`, `--visible`,
 `--headless`, `--timeout`, `--mfa-timeout`, `--fresh-profile`, `--verbose`,
@@ -376,6 +376,12 @@ Covered variables, aliases included: `SCHWAB_API_KEY` / `SCHWAB_APP_KEY` /
 `SCHWAB_CLIENT_ID`, `SCHWAB_APP_SECRET` / `SCHWAB_CLIENT_SECRET`, and
 `SCHWAB_PASSWORD` / `SCHWAB_LOGIN_PASSWORD`. **Every** matching plaintext line
 is rewritten, so a leftover alias cannot keep the secret in the clear.
+
+The envelope is built from the value **python-dotenv parses**, not the raw text
+after `=`. So `SCHWAB_API_KEY=abc  # rotate in March` encrypts `abc` — the
+comment is not swallowed into the secret — and escapes inside double quotes
+(`"…"`) stay decoded. A rewritten line comes back as just `KEY=$$…$$`, so any
+trailing comment on that line is dropped.
 
 * `dpapi` — default on Windows. Windows DPAPI binds the blob to your Windows
   user account, so another account (or the same file on another PC) cannot
