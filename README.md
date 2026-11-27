@@ -14,7 +14,7 @@
   <img alt="python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white">
   <img alt="platform Windows" src="https://img.shields.io/badge/platform-Windows-0F172A?style=flat-square&logo=windows11&logoColor=white">
   <img alt="engine SeleniumBase UC" src="https://img.shields.io/badge/engine-SeleniumBase%20UC-22C55E?style=flat-square">
-  <img alt="tests 39 passing" src="https://img.shields.io/badge/tests-39%20passing-16A34A?style=flat-square">
+  <img alt="tests 48 passing" src="https://img.shields.io/badge/tests-48%20passing-16A34A?style=flat-square">
   <img alt="token life 7 days" src="https://img.shields.io/badge/token%20life-7%20days-0EA5E9?style=flat-square">
 </p>
 
@@ -464,12 +464,13 @@ single-purpose Windows refresher.
 | Browser never shows the callback | Check `SCHWAB_CALLBACK_URL` matches the portal **exactly**, including the trailing path. Run `doctor --selftest`. |
 | `failed to launch Chrome UC driver: sequence item 0: expected str instance, NoneType found` | Fixed upstream of SeleniumBase's own scan: Chrome is now located by `chrome_path()` (`schwab_refresh/browser.py`). If Chrome lives somewhere non-standard, set `SCHWAB_REFRESH_CHROME_BIN` to the full path. |
 | Refresh token rejected every run | The stored refresh token is older than 7 days. `refresh` should fall back to a full login automatically; check the log for the fallback line. |
+| `corrupt key file …\secret.key` | Older builds wrote the AES key through a text-mode handle on Windows, so a `0x0A` byte became CRLF (~12% of keys) and the file read back 33 bytes. Fixed. To recover: delete `<state>/secret.key`, put the plaintext secrets back in `.env`, and the next run writes a clean key and re-encrypts. |
 
 ## Development
 
 ```powershell
 uv sync
-uv run pytest            # 39 tests, no network/browser needed for the suite
+uv run pytest            # 48 tests, no network/browser needed for the suite
 uv run schwab-refresh doctor --selftest
 ```
 

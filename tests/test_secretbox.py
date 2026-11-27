@@ -36,6 +36,22 @@ def test_roundtrip_aes_fallback(state, monkeypatch):
     assert len((state / "secret.key").read_bytes()) == 32
 
 
+def test_aes_key_file_is_written_in_binary(state, monkeypatch):
+    """A 0x0A byte in the key must stay one byte.
+
+    os.open() without O_BINARY is a *text* handle on Windows and rewrites 0x0A
+    as CRLF. A random 32-byte key hits that ~12% of the time, which used to
+    leave a 33-byte secret.key and break every later decrypt for that profile.
+    """
+    monkeypatch.setattr(secretbox, "_dpapi_available", lambda: False)
+    monkeypatch.setattr(secretbox.secrets, "token_bytes", lambda n: b"\n" * n)
+
+    envelope = secretbox.encrypt("pw", state_dir=state)
+
+    assert (state / "secret.key").read_bytes() == b"\n" * 32
+    assert secretbox.decrypt(envelope, state_dir=state) == "pw"
+
+
 def test_aes_envelope_without_key_fails(state, monkeypatch):
     monkeypatch.setattr(secretbox, "_dpapi_available", lambda: False)
     envelope = secretbox.encrypt("pw", state_dir=state)
@@ -138,6 +154,17 @@ def test_inline_comment_does_not_end_up_inside_the_secret(tmp_path, state):
 
     assert secretbox.decrypt(envelopes["SCHWAB_API_KEY"], state_dir=state) == "value"
     assert dotenv_values(env)["SCHWAB_API_KEY"].startswith("$$")
+
+
+def test_multiline_quoted_secret_is_left_alone(tmp_path, state):
+    """A value spanning lines cannot be bound from one line: leave it readable
+    rather than rewriting a fragment and mangling the file."""
+    env = tmp_path / ".env"
+    before = "SCHWAB_API_KEY=k\nSCHWAB_PASSWORD='multi\nline secret'\n"
+    env.write_text(before, encoding="utf-8")
+
+    assert secretbox.encrypt_in_env_file(env, ("SCHWAB_PASSWORD",), state_dir=state) == {}
+    assert env.read_text(encoding="utf-8") == before
 
 
 def test_env_file_wrapped_vars_reports_only_envelopes(tmp_path):
