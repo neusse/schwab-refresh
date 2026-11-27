@@ -19,6 +19,7 @@
 </p>
 
 ---
+BAD NEWS:  I am working on this.  Codex will refuse to install this for you becaus it says in the project it is bypassing OAuth security or something. So you need to install this yourself or use DeepSeek.
 
 Unattended Charles Schwab OAuth token minting. Runs a real browser through
 Schwab's login → MFA → consent → account-link flow, captures the authorization
