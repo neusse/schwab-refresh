@@ -1,6 +1,7 @@
 import sys
 
 import pytest
+from dotenv import dotenv_values
 
 from schwab_refresh import secretbox
 
@@ -103,6 +104,40 @@ def test_env_file_already_wrapped_is_noop(tmp_path, state):
 def test_env_file_missing_returns_empty(tmp_path, state):
     missing = tmp_path / "nope.env"
     assert secretbox.encrypt_in_env_file(missing, ("SCHWAB_PASSWORD",), state_dir=state) == {}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "SCHWAB_API_KEY=value  # inline note",
+        r'SCHWAB_API_KEY="pa\"ss\\word"',
+        r"SCHWAB_API_KEY='single \\ literal'",
+        "SCHWAB_API_KEY=nmE%g8@#Rc",
+        "export SCHWAB_API_KEY=exported",
+        "SCHWAB_API_KEY=  spaced  ",
+    ],
+)
+def test_rewrite_preserves_the_value_dotenv_parses(tmp_path, state, line):
+    """The migration must not change the credential it is protecting."""
+    env = tmp_path / ".env"
+    env.write_text(line + "\n", encoding="utf-8")
+    before = dotenv_values(env)["SCHWAB_API_KEY"]
+    assert before
+
+    envelopes = secretbox.encrypt_in_env_file(env, ("SCHWAB_API_KEY",), state_dir=state)
+
+    assert secretbox.decrypt(envelopes["SCHWAB_API_KEY"], state_dir=state) == before
+    assert dotenv_values(env)["SCHWAB_API_KEY"] == envelopes["SCHWAB_API_KEY"]
+
+
+def test_inline_comment_does_not_end_up_inside_the_secret(tmp_path, state):
+    env = tmp_path / ".env"
+    env.write_text("SCHWAB_API_KEY=value  # rotate me in March\n", encoding="utf-8")
+
+    envelopes = secretbox.encrypt_in_env_file(env, ("SCHWAB_API_KEY",), state_dir=state)
+
+    assert secretbox.decrypt(envelopes["SCHWAB_API_KEY"], state_dir=state) == "value"
+    assert dotenv_values(env)["SCHWAB_API_KEY"].startswith("$$")
 
 
 def test_env_file_wrapped_vars_reports_only_envelopes(tmp_path):

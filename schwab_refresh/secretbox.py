@@ -30,11 +30,14 @@ login form, so the ciphertext has to be reversible.
 from __future__ import annotations
 
 import base64
+import io
 import os
 import re
 import secrets
 import sys
 from pathlib import Path
+
+from dotenv.main import parse_stream
 
 _ENTROPY = b"schwab-refresh:v1"
 _KEY_BYTES = 32
@@ -55,6 +58,28 @@ class SecretError(Exception):
 # --------------------------------------------------------------------- #
 def is_wrapped(value: str | None) -> bool:
     return bool(value) and _ENVELOPE_RE.match(value.strip()) is not None
+
+
+def _dotenv_value(line: str) -> str | None:
+    """The value python-dotenv itself would bind for a single ``KEY=...`` line.
+
+    Reusing dotenv's parser is what keeps the rewrite lossless. Deriving the
+    value from the raw text instead gets two shapes wrong, and silently changes
+    the credential:
+
+    * ``KEY=value  # note`` — dotenv stops at the comment, raw text does not
+    * ``KEY="pa\\"ss"`` — dotenv decodes the escapes, raw text keeps them
+
+    Returns ``None`` for a line dotenv cannot bind (no key, several bindings,
+    or a parse error), which means "leave this line alone".
+    """
+    try:
+        bindings = list(parse_stream(io.StringIO(line)))
+    except Exception:  # noqa: BLE001 - a line dotenv rejects is not ours to touch
+        return None
+    if len(bindings) != 1:
+        return None
+    return bindings[0][1]
 
 
 def encrypt(plaintext: str, *, state_dir: Path) -> str:
@@ -243,7 +268,7 @@ def env_file_wrapped_vars(env_path: str | Path) -> set[str]:
         match = _LINE_RE.match(line)
         if match is None:
             continue
-        if is_wrapped(match.group("value").strip()):
+        if is_wrapped(_dotenv_value(line)):
             wrapped.add(match.group("key").upper())
     return wrapped
 
@@ -261,6 +286,11 @@ def encrypt_in_env_file(
     matched (already wrapped, missing file, value absent). All matches are
     processed, not just the first: one stale alias left behind as plaintext
     would defeat the point of encrypting its sibling.
+
+    The value written into the envelope is the one python-dotenv parses, not
+    the raw text after ``=``, so a line with an inline comment or a quoted
+    escape keeps the exact credential it had before. Rewritten lines lose any
+    trailing ``# comment`` — the envelope replaces the whole value expression.
 
     Each plaintext is verified to decrypt before anything is written, and no
     plaintext backup is kept — that would defeat the point.
@@ -282,14 +312,12 @@ def encrypt_in_env_file(
         var = match.group("key")
         if var.upper() not in wanted:
             continue
-        raw_value = match.group("value").strip()
-        if raw_value[:1] in ("'", '"') and raw_value[-1:] == raw_value[:1]:
-            raw_value = raw_value[1:-1]
-        if not raw_value or is_wrapped(raw_value):
+        plaintext = _dotenv_value(line)
+        if not plaintext or is_wrapped(plaintext):
             continue
 
-        envelope = encrypt(raw_value, state_dir=state_dir)
-        if decrypt(envelope, state_dir=state_dir) != raw_value:
+        envelope = encrypt(plaintext, state_dir=state_dir)
+        if decrypt(envelope, state_dir=state_dir) != plaintext:
             raise SecretError("encryption self-check failed; .env left unchanged")
         lines[index] = f"{match.group('prefix')}{var}={envelope}{match.group('eol') or ''}"
         envelopes[var.upper()] = envelope

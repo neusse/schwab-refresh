@@ -31,8 +31,17 @@ if (-not (Test-Path $cmd)) { throw "Missing $cmd" }
 
 $action = New-ScheduledTaskAction -Execute $cmd -WorkingDirectory $proj
 
-$days = ($Day | ForEach-Object { [System.DayOfWeek]$_ }) -join ','
-$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At $Time
+# `-Day Tuesday,Friday` arrives as two strings from an interactive prompt but as
+# the single string "Tuesday,Friday" through -File or a wrapper script, so split
+# on commas either way.
+$dayList = @(
+    $Day | ForEach-Object { $_ -split ',' } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+)
+if (-not $dayList) { throw "-Day needs at least one day name (e.g. Friday)." }
+$dow = [System.DayOfWeek[]]($dayList | ForEach-Object { [System.DayOfWeek]$_ })
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $dow -At $Time
 
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
@@ -48,16 +57,25 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
     -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName `
-    -Description "Schwab OAuth refresh ($($Day -join '/') $Time local) - schwab-refresh" `
+    -Description "Schwab OAuth refresh ($($dayList -join '/') $Time local) - schwab-refresh" `
     -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
     -Force | Out-Null
 
 $t = Get-ScheduledTask -TaskName $TaskName
 $i = Get-ScheduledTaskInfo -TaskName $TaskName
+
+# Read the days back off the saved trigger rather than echoing what we asked
+# for: that is the field Task Scheduler will actually honour.
+$mask = [int]$t.Triggers[0].DaysOfWeek
+# DaysOfWeek is a 1-based bitmask (Sunday = 1, Monday = 2, ... Saturday = 64),
+# not the numeric value of System.DayOfWeek.
+$savedDays = @('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday') |
+    Where-Object { $mask -band (1 -shl [int][System.DayOfWeek]$_) }
+
 "TaskName  : $($t.TaskName)"
 "State     : $($t.State)"
 "Action    : $($t.Actions[0].Execute)  (start in $($t.Actions[0].WorkingDirectory))"
-"Trigger   : $($t.Triggers[0].StartBoundary)  days=$($t.Triggers[0].DaysOfWeek)"
+"Trigger   : $($t.Triggers[0].CimClass.CimClassName)  $($t.Triggers[0].StartBoundary)  days=$($savedDays -join ',') (mask $mask)"
 "MissedRun : $($t.Settings.StartWhenAvailable)"
 "NextRun   : $($i.NextRunTime)"
 "LastResult: $($i.LastTaskResult)"
